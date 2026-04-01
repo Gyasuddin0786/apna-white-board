@@ -1,5 +1,6 @@
 const COLORS = ['#e74c3c','#3498db','#2ecc71','#f39c12','#9b59b6','#1abc9c','#e67e22','#34495e'];
 const roomUsers = new Map(); // roomId -> Map(socketId -> userInfo)
+const roomMessages = new Map(); // roomId -> last 100 messages
 
 module.exports = (io) => {
   io.on('connection', (socket) => {
@@ -14,6 +15,10 @@ module.exports = (io) => {
       if (!roomUsers.has(roomId)) roomUsers.set(roomId, new Map());
       roomUsers.get(roomId).set(socket.id, currentUser);
 
+      // Send existing chat history to new joiner
+      const history = roomMessages.get(roomId) || [];
+      socket.emit('chat-history', history);
+
       io.to(roomId).emit('room-users', Array.from(roomUsers.get(roomId).values()));
       socket.to(roomId).emit('user-joined', currentUser);
     });
@@ -21,11 +26,6 @@ module.exports = (io) => {
     socket.on('cursor-move', ({ x, y }) => {
       if (!currentRoom) return;
       socket.to(currentRoom).emit('cursor-update', { socketId: socket.id, x, y, user: currentUser });
-    });
-
-    socket.on('draw-action', (action) => {
-      if (!currentRoom) return;
-      socket.to(currentRoom).emit('draw-action', action);
     });
 
     socket.on('elements-update', (elements) => {
@@ -36,6 +36,22 @@ module.exports = (io) => {
     socket.on('board-title-change', (title) => {
       if (!currentRoom) return;
       socket.to(currentRoom).emit('board-title-change', title);
+    });
+
+    // Chat
+    socket.on('chat-message', (text) => {
+      if (!currentRoom || !currentUser || !text?.trim()) return;
+      const msg = {
+        id: `${Date.now()}_${socket.id}`,
+        text: text.trim(),
+        user: { name: currentUser.name, color: currentUser.color },
+        timestamp: Date.now(),
+      };
+      if (!roomMessages.has(currentRoom)) roomMessages.set(currentRoom, []);
+      const msgs = roomMessages.get(currentRoom);
+      msgs.push(msg);
+      if (msgs.length > 100) msgs.shift();
+      io.to(currentRoom).emit('chat-message', msg);
     });
 
     socket.on('disconnect', () => {

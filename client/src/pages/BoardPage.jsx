@@ -10,6 +10,7 @@ import ToolBar from '../components/toolbar/ToolBar';
 import TopBar from '../components/toolbar/TopBar';
 import PropertiesPanel from '../components/sidebar/PropertiesPanel';
 import LayersPanel from '../components/sidebar/LayersPanel';
+import ChatPanel from '../components/ui/ChatPanel';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 import { CircularProgress } from '@mui/material';
@@ -29,7 +30,6 @@ const BoardPage = () => {
 
   useEffect(() => {
     if (!token) { navigate('/login'); return; }
-    // If user not yet hydrated from persist, fetch first
     const init = async () => {
       if (!user) await fetchMe();
       await loadBoard();
@@ -71,6 +71,7 @@ const BoardPage = () => {
         />
       </div>
       <PropertiesPanel />
+      <ChatPanel boardId={id} />
     </div>
   );
 };

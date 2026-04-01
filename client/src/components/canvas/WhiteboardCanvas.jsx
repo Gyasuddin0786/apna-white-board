@@ -1,11 +1,16 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
-import { Stage, Layer, Line, Rect, Circle, Arrow, Text, Group, RegularPolygon } from 'react-konva';
-import { useBoardStore } from '../../store/boardStore';
+import { Stage, Layer } from 'react-konva';
+import { useBoardStore, useUIStore } from '../../store/boardStore';
 import { generateId, getRelativePointerPosition, snapToGrid, GRID_SIZE, TOOL_CURSORS } from '../../utils/helpers';
 import GridLayer from './GridLayer';
 import RemoteCursors from './RemoteCursors';
 import ElementRenderer from './ElementRenderer';
 import SelectionTransformer from './SelectionTransformer';
+
+const RADIUS_TOOLS = ['circle', 'triangle', 'star', 'hexagon'];
+const POINT_TOOLS  = ['pencil', 'eraser', 'highlight'];
+const LINE_TOOLS   = ['arrow', 'line'];
+const BOX_TOOLS    = ['rect', 'diamond', 'parallelogram', 'cylinder'];
 
 const WhiteboardCanvas = ({ stageRef: externalRef, onElementsChange, onCursorMove }) => {
   const internalRef = useRef(null);
@@ -15,10 +20,10 @@ const WhiteboardCanvas = ({ stageRef: externalRef, onElementsChange, onCursorMov
 
   const {
     elements, activeTool, strokeColor, fillColor, strokeWidth, fontSize,
-    opacity, gridEnabled, stageScale, stagePos, darkMode,
-    setStageScale, setStagePos, addElement, setElements, selectedIds,
-    setSelectedIds, role,
+    opacity, gridEnabled, stageScale, stagePos,
+    setStageScale, setStagePos, addElement, setElements, selectedIds, setSelectedIds, role,
   } = useBoardStore();
+  const { darkMode } = useUIStore();
 
   const isReadOnly = role === 'viewer';
 
@@ -26,10 +31,34 @@ const WhiteboardCanvas = ({ stageRef: externalRef, onElementsChange, onCursorMov
     const stage = stageRef.current;
     if (!stage) return { x: 0, y: 0 };
     const pos = getRelativePointerPosition(stage);
-    return snap && gridEnabled
-      ? { x: snapToGrid(pos.x, GRID_SIZE), y: snapToGrid(pos.y, GRID_SIZE) }
-      : pos;
+    return snap && gridEnabled ? { x: snapToGrid(pos.x, GRID_SIZE), y: snapToGrid(pos.y, GRID_SIZE) } : pos;
   }, [gridEnabled]);
+
+  // Paste image from clipboard
+  useEffect(() => {
+    const handlePaste = async (e) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          const blob = item.getAsFile();
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            const el = {
+              id: generateId(), type: 'image', src: ev.target.result,
+              x: 100, y: 100, width: 400, height: 300,
+              stroke: 'transparent', strokeWidth: 0, fill: 'transparent', opacity: 1,
+            };
+            addElement(el);
+            onElementsChange?.([...elements, el]);
+          };
+          reader.readAsDataURL(blob);
+        }
+      }
+    };
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, [elements, addElement, onElementsChange]);
 
   const handleMouseDown = useCallback((e) => {
     if (isReadOnly) return;
@@ -43,18 +72,15 @@ const WhiteboardCanvas = ({ stageRef: externalRef, onElementsChange, onCursorMov
     const id = generateId();
     const base = { id, stroke: strokeColor, strokeWidth, opacity, fill: fillColor };
 
-    if (activeTool === 'pencil') {
-      setCurrentElement({ ...base, type: 'pencil', points: [pos.x, pos.y] });
-    } else if (activeTool === 'eraser') {
-      setCurrentElement({ id, type: 'eraser', points: [pos.x, pos.y], stroke: darkMode ? '#1e1e2e' : '#ffffff', strokeWidth: strokeWidth * 4 });
-    } else if (activeTool === 'rect') {
-      setCurrentElement({ ...base, type: 'rect', x: pos.x, y: pos.y, width: 0, height: 0 });
-    } else if (activeTool === 'circle') {
-      setCurrentElement({ ...base, type: 'circle', x: pos.x, y: pos.y, radius: 0 });
-    } else if (activeTool === 'arrow') {
-      setCurrentElement({ ...base, type: 'arrow', points: [pos.x, pos.y, pos.x, pos.y] });
-    } else if (activeTool === 'line') {
-      setCurrentElement({ ...base, type: 'line', points: [pos.x, pos.y, pos.x, pos.y] });
+    if (POINT_TOOLS.includes(activeTool)) {
+      const stroke = activeTool === 'eraser' ? (darkMode ? '#111827' : '#f9fafb') : strokeColor;
+      setCurrentElement({ ...base, stroke, type: activeTool, points: [pos.x, pos.y] });
+    } else if (BOX_TOOLS.includes(activeTool)) {
+      setCurrentElement({ ...base, type: activeTool, x: pos.x, y: pos.y, width: 0, height: 0 });
+    } else if (RADIUS_TOOLS.includes(activeTool)) {
+      setCurrentElement({ ...base, type: activeTool, x: pos.x, y: pos.y, radius: 0 });
+    } else if (LINE_TOOLS.includes(activeTool)) {
+      setCurrentElement({ ...base, type: activeTool, points: [pos.x, pos.y, pos.x, pos.y] });
     } else if (activeTool === 'text') {
       const el = { ...base, type: 'text', x: pos.x, y: pos.y, text: 'Double-click to edit', fontSize, fill: strokeColor };
       addElement(el);
@@ -74,20 +100,18 @@ const WhiteboardCanvas = ({ stageRef: externalRef, onElementsChange, onCursorMov
       const pos = getRelativePointerPosition(stage);
       onCursorMove?.(pos.x, pos.y);
     }
-
     if (!isDrawing.current || !currentElement) return;
     const pos = getPos(true);
 
-    if (currentElement.type === 'pencil' || currentElement.type === 'eraser') {
-      setCurrentElement((prev) => ({ ...prev, points: [...prev.points, pos.x, pos.y] }));
-    } else if (currentElement.type === 'rect') {
-      setCurrentElement((prev) => ({ ...prev, width: pos.x - prev.x, height: pos.y - prev.y }));
-    } else if (currentElement.type === 'circle') {
-      const dx = pos.x - currentElement.x;
-      const dy = pos.y - currentElement.y;
-      setCurrentElement((prev) => ({ ...prev, radius: Math.sqrt(dx * dx + dy * dy) }));
-    } else if (currentElement.type === 'arrow' || currentElement.type === 'line') {
-      setCurrentElement((prev) => ({ ...prev, points: [prev.points[0], prev.points[1], pos.x, pos.y] }));
+    if (POINT_TOOLS.includes(currentElement.type)) {
+      setCurrentElement((p) => ({ ...p, points: [...p.points, pos.x, pos.y] }));
+    } else if (BOX_TOOLS.includes(currentElement.type)) {
+      setCurrentElement((p) => ({ ...p, width: pos.x - p.x, height: pos.y - p.y }));
+    } else if (RADIUS_TOOLS.includes(currentElement.type)) {
+      const dx = pos.x - currentElement.x, dy = pos.y - currentElement.y;
+      setCurrentElement((p) => ({ ...p, radius: Math.sqrt(dx * dx + dy * dy) }));
+    } else if (LINE_TOOLS.includes(currentElement.type)) {
+      setCurrentElement((p) => ({ ...p, points: [p.points[0], p.points[1], pos.x, pos.y] }));
     }
   }, [currentElement, getPos, onCursorMove]);
 
@@ -95,13 +119,13 @@ const WhiteboardCanvas = ({ stageRef: externalRef, onElementsChange, onCursorMov
     if (!isDrawing.current || !currentElement) return;
     isDrawing.current = false;
 
-    const isValid =
-      (currentElement.type === 'pencil' || currentElement.type === 'eraser') && currentElement.points.length > 2 ||
-      currentElement.type === 'rect' && (Math.abs(currentElement.width) > 2 || Math.abs(currentElement.height) > 2) ||
-      currentElement.type === 'circle' && currentElement.radius > 2 ||
-      (currentElement.type === 'arrow' || currentElement.type === 'line') && currentElement.points.length === 4;
+    const valid =
+      (POINT_TOOLS.includes(currentElement.type) && currentElement.points.length > 2) ||
+      (BOX_TOOLS.includes(currentElement.type) && (Math.abs(currentElement.width) > 2 || Math.abs(currentElement.height) > 2)) ||
+      (RADIUS_TOOLS.includes(currentElement.type) && currentElement.radius > 2) ||
+      (LINE_TOOLS.includes(currentElement.type) && currentElement.points.length === 4);
 
-    if (isValid) {
+    if (valid) {
       const newElements = [...elements, currentElement];
       setElements(newElements);
       onElementsChange?.(newElements);
@@ -109,29 +133,19 @@ const WhiteboardCanvas = ({ stageRef: externalRef, onElementsChange, onCursorMov
     setCurrentElement(null);
   }, [currentElement, elements, setElements, onElementsChange]);
 
-  // Zoom
   const handleWheel = useCallback((e) => {
     e.evt.preventDefault();
     const stage = stageRef.current;
     const oldScale = stageScale;
     const pointer = stage.getPointerPosition();
     const scaleBy = 1.05;
-    const newScale = e.evt.deltaY < 0
-      ? Math.min(oldScale * scaleBy, 5)
-      : Math.max(oldScale / scaleBy, 0.1);
-
-    const mousePointTo = {
-      x: (pointer.x - stagePos.x) / oldScale,
-      y: (pointer.y - stagePos.y) / oldScale,
-    };
+    const newScale = e.evt.deltaY < 0 ? Math.min(oldScale * scaleBy, 5) : Math.max(oldScale / scaleBy, 0.1);
+    const mousePointTo = { x: (pointer.x - stagePos.x) / oldScale, y: (pointer.y - stagePos.y) / oldScale };
     setStageScale(newScale);
-    setStagePos({
-      x: pointer.x - mousePointTo.x * newScale,
-      y: pointer.y - mousePointTo.y * newScale,
-    });
+    setStagePos({ x: pointer.x - mousePointTo.x * newScale, y: pointer.y - mousePointTo.y * newScale });
   }, [stageScale, stagePos, setStageScale, setStagePos]);
 
-  const cursor = isReadOnly ? 'not-allowed' : TOOL_CURSORS[activeTool] || 'default';
+  const cursor = isReadOnly ? 'not-allowed' : (TOOL_CURSORS[activeTool] || 'default');
 
   return (
     <div className="w-full h-full overflow-hidden" style={{ cursor }}>
@@ -139,10 +153,8 @@ const WhiteboardCanvas = ({ stageRef: externalRef, onElementsChange, onCursorMov
         ref={stageRef}
         width={window.innerWidth}
         height={window.innerHeight}
-        scaleX={stageScale}
-        scaleY={stageScale}
-        x={stagePos.x}
-        y={stagePos.y}
+        scaleX={stageScale} scaleY={stageScale}
+        x={stagePos.x} y={stagePos.y}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -160,10 +172,7 @@ const WhiteboardCanvas = ({ stageRef: externalRef, onElementsChange, onCursorMov
           <ElementRenderer
             elements={elements}
             selectedIds={selectedIds}
-            onSelect={(id, multi) => {
-              if (activeTool !== 'select') return;
-              setSelectedIds(multi ? [...new Set([...selectedIds, id])] : [id]);
-            }}
+            onSelect={(id) => { if (activeTool !== 'select') return; setSelectedIds([id]); }}
             onUpdate={(id, updates) => {
               const updated = elements.map((el) => el.id === id ? { ...el, ...updates } : el);
               setElements(updated);
@@ -183,7 +192,7 @@ const WhiteboardCanvas = ({ stageRef: externalRef, onElementsChange, onCursorMov
           />
         </Layer>
         <Layer>
-          <RemoteCursors scale={stageScale} stagePos={stagePos} />
+          <RemoteCursors />
         </Layer>
       </Stage>
     </div>

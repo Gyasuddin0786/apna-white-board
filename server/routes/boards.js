@@ -1,10 +1,53 @@
 const express = require('express');
+const crypto = require('crypto');
 const Board = require('../models/Board');
 const auth = require('../middleware/auth');
 
 const router = express.Router();
 
-// Get all boards for user
+const sanitizeElements = (elements) =>
+  elements.map((el) => {
+    const clean = { ...el };
+    if (!clean.groupId) delete clean.groupId;
+    if (!clean.fill || clean.fill === 'transparent') clean.fill = 'transparent';
+    return clean;
+  });
+
+// ─── INVITE ROUTES (must be before /:id to avoid conflict) ───────────────────
+
+// Get board info by invite token — no auth needed (for preview before login)
+router.get('/invite/:token', async (req, res) => {
+  try {
+    const board = await Board.findOne({ inviteToken: req.params.token })
+      .select('title owner inviteToken')
+      .populate('owner', 'name');
+    if (!board) return res.status(404).json({ message: 'Invalid invite link' });
+    res.json({ boardId: board._id, title: board.title, ownerName: board.owner.name });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Accept invite — auth required
+router.post('/invite/:token/accept', auth, async (req, res) => {
+  try {
+    const board = await Board.findOne({ inviteToken: req.params.token });
+    if (!board) return res.status(404).json({ message: 'Invalid or expired invite link' });
+
+    const alreadyOwner = board.owner.toString() === req.user.id;
+    const alreadyCollab = board.collaborators.find(c => c.user.toString() === req.user.id);
+    if (!alreadyOwner && !alreadyCollab) {
+      board.collaborators.push({ user: req.user.id, role: 'editor' });
+      await board.save();
+    }
+    res.json({ boardId: board._id });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ─── BOARD CRUD ───────────────────────────────────────────────────────────────
+
 router.get('/', auth, async (req, res) => {
   try {
     const boards = await Board.find({
@@ -16,7 +59,6 @@ router.get('/', auth, async (req, res) => {
   }
 });
 
-// Create board
 router.post('/', auth, async (req, res) => {
   try {
     const board = await Board.create({ ...req.body, owner: req.user.id });
@@ -26,15 +68,17 @@ router.post('/', auth, async (req, res) => {
   }
 });
 
-// Get single board
 router.get('/:id', auth, async (req, res) => {
   try {
-    const board = await Board.findById(req.params.id).populate('owner', 'name email').populate('collaborators.user', 'name email');
+    const board = await Board.findById(req.params.id)
+      .populate('owner', 'name email')
+      .populate('collaborators.user', 'name email');
     if (!board) return res.status(404).json({ message: 'Board not found' });
 
     const isOwner = board.owner._id.toString() === req.user.id;
     const collab = board.collaborators.find(c => c.user._id.toString() === req.user.id);
-    if (!isOwner && !collab && !board.isPublic) return res.status(403).json({ message: 'Access denied' });
+    if (!isOwner && !collab && !board.isPublic)
+      return res.status(403).json({ message: 'Access denied' });
 
     res.json({ ...board.toObject(), role: isOwner ? 'owner' : collab?.role || 'viewer' });
   } catch (err) {
@@ -42,7 +86,6 @@ router.get('/:id', auth, async (req, res) => {
   }
 });
 
-// Update board
 router.put('/:id', auth, async (req, res) => {
   try {
     const board = await Board.findById(req.params.id);
@@ -50,26 +93,16 @@ router.put('/:id', auth, async (req, res) => {
 
     const isOwner = board.owner.toString() === req.user.id;
     const collab = board.collaborators.find(c => c.user.toString() === req.user.id);
-    if (!isOwner && collab?.role !== 'editor') return res.status(403).json({ message: 'Access denied' });
+    if (!isOwner && collab?.role !== 'editor')
+      return res.status(403).json({ message: 'Access denied' });
 
-    // Save version before update
     if (req.body.elements && board.elements.length > 0) {
       board.versions.push({ elements: board.elements, savedBy: req.user.id });
       if (board.versions.length > 20) board.versions.shift();
     }
 
-    // Sanitize elements: remove undefined/null groupId, fix fill
-    if (req.body.elements) {
-      req.body.elements = req.body.elements.map((el) => {
-        const clean = { ...el };
-        if (!clean.groupId) delete clean.groupId;
-        if (!clean.fill || clean.fill === 'transparent') clean.fill = 'transparent';
-        return clean;
-      });
-    }
-
     const { elements, title, background, gridEnabled, isPublic } = req.body;
-    if (elements !== undefined) board.elements = elements;
+    if (elements !== undefined) board.elements = sanitizeElements(elements);
     if (title !== undefined) board.title = title;
     if (background !== undefined) board.background = background;
     if (gridEnabled !== undefined) board.gridEnabled = gridEnabled;
@@ -82,7 +115,6 @@ router.put('/:id', auth, async (req, res) => {
   }
 });
 
-// Delete board
 router.delete('/:id', auth, async (req, res) => {
   try {
     const board = await Board.findOneAndDelete({ _id: req.params.id, owner: req.user.id });
@@ -93,7 +125,6 @@ router.delete('/:id', auth, async (req, res) => {
   }
 });
 
-// Add collaborator
 router.post('/:id/collaborators', auth, async (req, res) => {
   try {
     const board = await Board.findOne({ _id: req.params.id, owner: req.user.id });
@@ -112,12 +143,24 @@ router.post('/:id/collaborators', auth, async (req, res) => {
   }
 });
 
-// Get version history
+router.post('/:id/invite-token', auth, async (req, res) => {
+  try {
+    const board = await Board.findOne({ _id: req.params.id, owner: req.user.id });
+    if (!board) return res.status(404).json({ message: 'Board not found' });
+    board.inviteToken = crypto.randomBytes(20).toString('hex');
+    await board.save();
+    res.json({ inviteToken: board.inviteToken });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 router.get('/:id/versions', auth, async (req, res) => {
   try {
     const board = await Board.findById(req.params.id).select('versions owner');
     if (!board) return res.status(404).json({ message: 'Board not found' });
-    if (board.owner.toString() !== req.user.id) return res.status(403).json({ message: 'Access denied' });
+    if (board.owner.toString() !== req.user.id)
+      return res.status(403).json({ message: 'Access denied' });
     res.json(board.versions);
   } catch (err) {
     res.status(500).json({ message: err.message });
