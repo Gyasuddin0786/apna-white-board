@@ -4,6 +4,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const passport = require('./middleware/passport');
 
 const app = express();
 const server = http.createServer(app);
@@ -13,6 +14,7 @@ const io = new Server(server, {
 
 app.use(cors({ origin: process.env.CLIENT_URL }));
 app.use(express.json({ limit: '10mb' }));
+app.use(passport.initialize());
 
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/boards', require('./routes/boards'));

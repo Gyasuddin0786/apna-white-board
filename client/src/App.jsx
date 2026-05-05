@@ -6,6 +6,7 @@ import AuthPage from './pages/AuthPage';
 import DashboardPage from './pages/DashboardPage';
 import BoardPage from './pages/BoardPage';
 import InvitePage from './pages/InvitePage';
+import OAuthCallbackPage from './pages/OAuthCallbackPage';
 
 const PrivateRoute = ({ children }) => {
   const { token } = useAuthStore();
@@ -26,6 +27,7 @@ const App = () => {
         <Route path="/login" element={<AuthPage mode="login" />} />
         <Route path="/register" element={<AuthPage mode="register" />} />
         <Route path="/invite/:token" element={<InvitePage />} />
+        <Route path="/oauth-callback" element={<OAuthCallbackPage />} />
         <Route path="/dashboard" element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
         <Route path="/board/:id" element={<PrivateRoute><BoardPage /></PrivateRoute>} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

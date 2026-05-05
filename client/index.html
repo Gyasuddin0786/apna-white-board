@@ -4,7 +4,24 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>client</title>
+    <title>Apna WhiteBoard — Real-time Collaborative Drawing</title>
+    <!-- Prevent white flash: apply dark bg before React hydrates -->
+    <script>
+      (function () {
+        try {
+          var prefs = JSON.parse(localStorage.getItem('wb-ui-prefs') || '{}');
+          if (prefs && prefs.state && prefs.state.darkMode) {
+            document.documentElement.classList.add('dark-init');
+            document.documentElement.style.backgroundColor = '#030712';
+            document.documentElement.style.colorScheme = 'dark';
+          }
+        } catch (e) {}
+      })();
+    </script>
+    <style>
+      /* Applied instantly before any CSS loads */
+      html.dark-init body { background-color: #030712; }
+    </style>
   </head>
   <body>
     <div id="root"></div>

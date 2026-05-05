@@ -7,6 +7,7 @@ import {
 import { useBoardStore, useUIStore } from '../../store/boardStore';
 import { downloadURI, exportToPDF } from '../../utils/helpers';
 import ShareModal from '../ui/ShareModal';
+import { WBLogo } from '../ui/Logo';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 
@@ -78,9 +79,7 @@ const TopBar = ({ stageRef, boardId, onTitleChange }) => {
       <div className={`fixed top-0 left-0 right-0 z-50 h-14 flex items-center px-4 gap-1.5 border-b shadow-sm ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}`}>
         {/* Logo */}
         <div className="flex items-center gap-2 mr-2 shrink-0">
-          <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center shadow">
-            <span className="text-white font-bold text-sm">W</span>
-          </div>
+          <WBLogo size={30} />
         </div>
 
         {/* Title */}

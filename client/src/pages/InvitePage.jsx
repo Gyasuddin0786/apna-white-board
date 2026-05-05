@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
+import { WBLogo } from '../components/ui/Logo';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 import { CircularProgress } from '@mui/material';
@@ -58,10 +59,10 @@ const InvitePage = () => {
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-14 h-14 bg-indigo-600 rounded-2xl mb-4 shadow-lg">
-            <span className="text-white font-bold text-2xl">W</span>
+          <div className="flex justify-center mb-3">
+            <WBLogo size={52} />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">You're invited!</h1>
+          <h1 className="text-2xl font-bold text-gray-900">You're invited to Apna WhiteBoard!</h1>
         </div>
 
         <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8 text-center">
