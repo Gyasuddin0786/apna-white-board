@@ -23,7 +23,7 @@ require('./socket')(io);
 
 // Test route
 app.get('/', (req, res) => {
-  res.send('Server  is running 🚀');
+  res.send('Server  is running... 🚀');
 });
 mongoose.connect(process.env.MONGO_URI)
   .then(() => {
