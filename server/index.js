@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const http = require('http');
 const path = require('path');
+const fs = require('fs');
 const { Server } = require('socket.io');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -20,11 +21,12 @@ app.use(passport.initialize());
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/boards', require('./routes/boards'));
 
-if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, '../client/dist')));
+const distPath = path.join(__dirname, '../client/dist');
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath));
   app.use((req, res, next) => {
-    if (req.method === 'GET' && !req.path.startsWith('/api')) {
-      res.sendFile(path.join(__dirname, '../client/dist/index.html'));
+    if (req.method === 'GET' && !req.path.startsWith('/api') && !path.extname(req.path)) {
+      res.sendFile(path.join(distPath, 'index.html'));
     } else {
       next();
     }
