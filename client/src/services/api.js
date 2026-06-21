@@ -1,6 +1,11 @@
 import axios from 'axios';
 
-const api = axios.create({ baseURL: import.meta.env.VITE_API_BASE_URL || '/api' });
+const rawApiBase = import.meta.env.VITE_API_BASE_URL;
+const baseURL = rawApiBase
+  ? rawApiBase.replace(/\/+$|\/api$/i, '') + '/api'
+  : '/api';
+
+const api = axios.create({ baseURL });
 
 api.interceptors.request.use((config) => {
   // Read from zustand persist storage
